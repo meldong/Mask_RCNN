@@ -33,7 +33,7 @@ from mrcnn import utils, visualize
 # Directory to store train and val data
 DEFAULT_DATASETS_DIR = os.path.join(ROOT_DIR, "datasets")
 
-# Local path to trained COCO weights file
+# Local path to ResNet101 trained COCO weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "_init_/mask_rcnn_coco.h5")
 # Download COCO trained weights from Releases if needed
 if not os.path.exists(COCO_WEIGHTS_PATH):
@@ -44,8 +44,8 @@ if not os.path.exists(COCO_WEIGHTS_PATH):
         shutil.copyfileobj(resp, out)
     print("... done downloading pretrained model!")
 
-# Local path to trained IMAGENET weights file
-IMAGENET_WEIGHTS_PATH = os.path.join(ROOT_DIR, "_init_/mask_rcnn_imagenet.h5")
+# Local path to ResNet50 trained IMAGENET weights file
+IMAGENET_WEIGHTS_PATH = os.path.join(ROOT_DIR, "_init_/resnet50_weights_tf_dim_ordering_tf_kernels_notop.h5")
 # Download COCO trained weights from Releases if needed
 if not os.path.exists(IMAGENET_WEIGHTS_PATH):
     """Download IMAGENET trained weights from Releases."""
@@ -54,6 +54,9 @@ if not os.path.exists(IMAGENET_WEIGHTS_PATH):
     with urllib.request.urlopen(IMAGENET_WEIGHTS_URL) as resp, open(IMAGENET_WEIGHTS_PATH, 'wb') as out:
         shutil.copyfileobj(resp, out)
     print("... done downloading pretrained model!")
+
+# Local path to MobileNet trained IMAGENET weights file
+MNV1_WEIGHTS_PATH = os.path.join(ROOT_DIR, "_init_/mobilenet_1_0_224_tf_no_top.h5")
 
 # Directory to save logs and checkpoints, if not provided through flag --logs
 DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
@@ -67,12 +70,9 @@ class MyConfig(Config):
     """Configuration for training on the toy  dataset.
     Derives from the base Config class and overrides some values.
     """
-    # Give the configuration a recognizable name
-    NAME = "coco"
-
     # We use a GPU with 12GB memory, which can fit two images.
     # Adjust down if you use a smaller GPU.
-    IMAGES_PER_GPU = 1
+    IMAGES_PER_GPU = 2
 
     # Number of classes (including background)
     NUM_CLASSES = 1 + 1  # Background + Object
@@ -196,14 +196,50 @@ def train(model):
     dataset_dir = os.path.join(DEFAULT_DATASETS_DIR, args.dataset)
 
     # Training dataset
+    print(">> Prepare training dataset...")
     dataset_train = MyDataset()
     dataset_train.load_dataset(dataset_dir, "train")
     dataset_train.prepare()
+    print("Image Count: {}".format(len(dataset_train.image_ids)))
+    print("Class Count: {}".format(dataset_train.num_classes))
+    for i, info in enumerate(dataset_train.class_info):
+        print("{:3}. {:50}".format(i, info['name']))
+    print("Random samples:")
+    image_ids = np.random.choice(dataset_train.image_ids, 3)
+    for image_id in image_ids:
+        image = dataset_train.load_image(image_id)
+        mask, class_ids = dataset_train.load_mask(image_id)
+        bbox = utils.extract_bboxes(mask)
+        print("image_id ", image_id, dataset_train.image_reference(image_id))
+        modellib.log("image", image)
+        modellib.log("mask", mask)
+        modellib.log("class_ids", class_ids)
+        modellib.log("bbox", bbox)
+        visualize.display_top_masks(image, mask, class_ids,
+                                    dataset_train.class_names)
 
     # Validation dataset
+    print(">> Prepare validation dataset...")
     dataset_val = MyDataset()
     dataset_val.load_dataset(dataset_dir, "val")
     dataset_val.prepare()
+    print("Image Count: {}".format(len(dataset_val.image_ids)))
+    print("Class Count: {}".format(dataset_val.num_classes))
+    for i, info in enumerate(dataset_val.class_info):
+        print("{:3}. {:50}".format(i, info['name']))
+    print("Random samples:")
+    image_ids = np.random.choice(dataset_val.image_ids, 3)
+    for image_id in image_ids:
+        image = dataset_val.load_image(image_id)
+        mask, class_ids = dataset_val.load_mask(image_id)
+        bbox = utils.extract_bboxes(mask)
+        print("image_id ", image_id, dataset_val.image_reference(image_id))
+        modellib.log("image", image)
+        modellib.log("mask", mask)
+        modellib.log("class_ids", class_ids)
+        modellib.log("bbox", bbox)
+        visualize.display_top_masks(image, mask, class_ids,
+                                    dataset_val.class_names)
 
 	# Image Augmentation (refer to coco.py for how to use)
     # Right/Left flip 50% of the time
@@ -412,6 +448,8 @@ if __name__ == '__main__':
         weights_path = COCO_WEIGHTS_PATH
     elif args.weights.lower() == "imagenet":
         weights_path = IMAGENET_WEIGHTS_PATH
+    elif args.weights.lower() == "mnv1":
+        weights_path = MNV1_WEIGHTS_PATH
     elif args.weights.lower() == "last":
         # Find last trained weights
         weights_path = model.find_last()
